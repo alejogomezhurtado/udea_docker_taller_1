@@ -29,3 +29,5 @@ node                 6-alpine            ac75c1f95b80        4 weeks ago        
 
 docker tag b344b863dac7 alejandrogomezh/tarea1:latest
 docker push alejandrogomezh/tarea1
+
+https://hub.docker.com/r/alejandrogomezh/tarea1/
