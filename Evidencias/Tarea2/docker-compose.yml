@@ -1,0 +1,122 @@
+version: "3.5"
+
+networks:
+  front_net:
+    driver: bridge
+    name: front_net
+    ipam:
+     config:
+       - subnet: 169.1.0.0/16
+  back_net:
+    driver: bridge
+    name: back_net
+    ipam:
+     config:
+       - subnet: 169.2.0.0/16
+volumes:
+  log:
+    
+volumes:
+  log:
+  
+services:
+  db:
+    image: mariadb
+    command: ["--default-authentication-plugin=mysql_native_password"]
+    restart: always
+    networks:
+      back_net:
+        ipv4_address: 169.2.0.2
+    environment:
+      COMPOSE_PROJECT_NAME: tarea2
+      MYSQL_ROOT_PASSWORD: passroot
+      MYSQL_USER: user1
+      MYSQL_PASSWORD: userpass
+      MYSQL_DATABASE: login
+      
+    ports:
+      - "3306:3306"
+    volumes:
+      - log:/var/lib/mysql/log
+      - $PWD/certificate:/certificate
+
+  backend:
+    image: backend
+    restart: always
+    networks:
+      - back_net
+      - front_net
+    ports:
+      - target: 8090
+    depends_on:
+      - db
+    environment:
+      COMPOSE_PROJECT_NAME: tarea2
+    volumes:
+      - log:/log
+      
+  web1:
+    image: nginx:1.15.5-alpine
+    environment:
+      COMPOSE_PROJECT_NAME: tarea2
+      SERVICE_PORTS: 9090
+    command: sh -c "envsubst < /etc/nginx/conf.d/mysite.template > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"
+    depends_on:
+      - db
+      - backend
+    links:
+      - backend
+    ports:
+      - target: 80
+    volumes:
+      - log:/log
+      - $PWD/nginx/www:/var/www/html
+      - $PWD/nginx/mysite.template:/etc/nginx/conf.d/mysite.template
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      mode: replicated
+      replicas: 2
+      labels: [APP=VOTING]
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: continue
+        monitor: 60s
+        max_failure_ratio: 0.3
+      placement:
+        constraints: [node.role == worker]
+    networks:
+      - front_net
+      
+  proxy:
+    image: haproxy:1.8.14-alpine
+    container_name: proxy
+    depends_on:
+      - web1
+    environment:
+      COMPOSE_PROJECT_NAME: tarea2
+      BALANCE: leastconn
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - $PWD/HaProxy:/usr/local/etc/haproxy
+      - $PWD/certificate:/etc/ssl/certificate
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - front_net
+    deploy:
+      placement:
+        constraints: [node.role == manager]

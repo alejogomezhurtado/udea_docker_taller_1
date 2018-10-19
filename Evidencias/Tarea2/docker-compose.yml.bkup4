@@ -1,0 +1,122 @@
+version: "3.5"
+
+networks:
+  front_net:
+    driver: bridge
+    name: front_net
+    ipam:
+     config:
+       - subnet: 169.1.0.0/16
+         #gateway: 169.1.0.1
+  back_net:
+    driver: bridge
+    name: back_net
+    ipam:
+     config:
+       - subnet: 169.2.0.0/16
+         #gateway: 169.2.0.1
+volumes:
+  log:
+  
+services:
+  traefik:
+    image: traefik:1.7.2-alpine
+    command: --web --docker --docker.domain=docker.localhost --
+    networks:
+      - front_net
+    environment:
+      COMPOSE_PROJECT_NAME: tarea2
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8081:8081"
+    #expose:
+      # traefik dashboard port
+      #- 8081
+    #labels:
+    #  traefik.backend: "traefik"
+    #  traefik.enable: true
+      # important: do NOT specify the entryPoint
+      #traefik.frontend.rule: "Host:127.0.0.1"
+    #  traefik.port: "8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - log:/log
+      - $PWD/certificate:/certificate
+      #- $PWD/traefik/traefik.toml:/traefik.toml
+      - /dev/null:/traefik.toml
+      - $PWD/traefik/acme.json:/acme.json
+    restart: "always"
+    #command: |-
+    #     --web
+    #     --docker.swarmmode
+    #     --docker.domain=traefik
+    #     --docker.watch
+    #     --docker.endpoint=unix://var/run/docker.sock -l DEBUG
+    #deploy:
+    #  replicas: 1
+    #  placement:
+    #    constraints:
+    #      - node.role == manager
+
+  db:
+    image: mariadb
+    command: ["--default-authentication-plugin=mysql_native_password"]
+    restart: always
+    networks:
+      back_net:
+        ipv4_address: 169.2.0.2
+    environment:
+      COMPOSE_PROJECT_NAME: tarea2
+      MYSQL_ROOT_PASSWORD: passroot
+      MYSQL_USER: user1
+      MYSQL_PASSWORD: userpass
+      MYSQL_DATABASE: login
+      
+    ports:
+      - "3306:3306"
+    volumes:
+      - log:/var/lib/mysql/log
+      - $PWD/certificate:/certificate
+      #- $PWD/mysql:/etc/mysql
+      
+  backend:
+    image: backend
+    restart: always
+    networks:
+      - back_net
+      - front_net
+    ports:
+      - "8090:8090"
+    depends_on:
+      - "db"
+    environment:
+      COMPOSE_PROJECT_NAME: tarea2
+    volumes:
+      - log:/log
+
+
+  frontend:
+    image: nginx:1.15.5-alpine
+    volumes:
+      - log:/log
+      - $PWD/nginx/www:/var/www/html
+      - $PWD/nginx/mysite.template:/etc/nginx/conf.d/mysite.template
+    ports:
+     - "8080:80"
+    environment:
+      COMPOSE_PROJECT_NAME: tarea2
+      NGINX_HOST: tarea2.com
+      NGINX_PORT: 80
+    command: sh -c "envsubst < /etc/nginx/conf.d/mysite.template > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"
+    restart: always
+    networks:
+      - front_net
+    depends_on:
+      - "db"
+      - "backend"
+    labels:
+      - "traefik.backend=frontend"
+      - "traefik.frontend.rule=PathPrefixStrip:/frontend"
+      - "traefik.port=80"
+

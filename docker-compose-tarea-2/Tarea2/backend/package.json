@@ -1,0 +1,14 @@
+{
+  "name": "dockerfile-assignment-2",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node db.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.18.3",
+    "express": "^4.16.4",
+    "method-override": "~3.0.0",
+    "sync-mysql": "^3.0.1"
+  }
+}
